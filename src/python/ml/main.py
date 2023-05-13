@@ -19,14 +19,15 @@ for label in labels:
 
     for datasets_path in datasets_paths_list:
         data = pd.read_csv(datasets_path)
-        # add new_X data to X
-        new_X = data.iloc[:, -3:].values  # x y z from accelerometer
+
+        new_X = data.iloc[:, -3:].values  # x y z accelerometer columns
 
         # use sliding window to create new_X_50
         new_X = np.array([
             new_X[i:i + WINDOW_SIZE]
             for i
-            in range(0, len(new_X) - WINDOW_SIZE, WINDOW_SIZE // 2)])
+            in range(0, len(new_X)-WINDOW_SIZE, WINDOW_SIZE//2)
+        ])
 
         # Flatten the windowed data
         new_X = new_X.reshape(new_X.shape[0], -1)
@@ -36,8 +37,7 @@ for label in labels:
         # set y to be the same for all rows
         y += [label for _ in range(len(new_X))]
 
-le = LabelEncoder()
-y = le.fit_transform(y)
+y = LabelEncoder().fit_transform(y)
 
 # explore the data
 print(X, y)
@@ -73,7 +73,7 @@ with open('src/arduino/track/MlClassifier.h', 'w') as f:
 ##############################################
 # select 20 random samples from the test set #
 # and print them in a format that can be     #
-# copied to Arduino                          #
+# copied to Arduino code                     #
 ##############################################
 random_samples = np.random.randint(0, len(X_test), 20)
 X_random_samples = X_test[random_samples]
