@@ -5,22 +5,25 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from everywhereml.sklearn.ensemble import RandomForestClassifier
 
-# This params currently achieve 98.38% accuracy on the MotionSense (jogging and walking) test dataset
-WINDOW_SIZE = 40   # 0.8 seconds - MotionSense dataset has a sampling rate of 50Hz
-N_ESTIMATORS = 20  # number of trees in the forest
-NUM_CLASSES = 3    # x, y, z
+# This params currently achieve 99.76% accuracy on the MotionSense (jogging and walking) test dataset
+WINDOW_SIZE = 5   # 0.5 seconds
+N_ESTIMATORS = 5  # number of trees in the forest
+NUM_CLASSES = 6    # x, y, z accel + gyro
 RANDOM_SEED = 42   # for reproducibility
 
-labels = ["jog", "wlk"]
+labels = ["wlk", "bik"]
+
+# path_glob = "data/MotionSense/{label}*/*.csv"
+path_glob = "data/{label}*.csv"
 
 X, y = np.array([]), []
 for label in labels:
-    datasets_paths_list = glob(f"data/MotionSense/{label}*/*.csv")
+    datasets_paths_list = glob(path_glob.format(label=label))
 
     for datasets_path in datasets_paths_list:
-        data = pd.read_csv(datasets_path)
+        data = pd.read_csv(datasets_path, sep=";")
 
-        new_X = data.iloc[:, -3:].values  # x y z accelerometer columns
+        new_X = data.iloc[:, -6:].values  # x y z accelerometer columns
 
         # use sliding window to create new_X_50
         new_X = np.array([
@@ -45,10 +48,10 @@ print(X.shape, y.shape)
 print(type(X), type(y))
 print(len(X), len(y))
 
-# balance the dataset by taking the minimum number of samples from each label
-y_01_len = min([len(y[y == i]) for i in range(len(labels))])
-X = np.vstack((X[y == 0][:y_01_len], X[y == 1][:y_01_len]))
-y = np.hstack((y[y == 0][:y_01_len], y[y == 1][:y_01_len]))
+# # balance the dataset by taking the minimum number of samples from each label
+# y_01_len = min([len(y[y == i]) for i in range(len(labels))])
+# X = np.vstack((X[y == 0][:y_01_len], X[y == 1][:y_01_len]))
+# y = np.hstack((y[y == 0][:y_01_len], y[y == 1][:y_01_len]))
 
 y_len = len(y)
 print(f"Number of samples: {y_len}, per label:")
