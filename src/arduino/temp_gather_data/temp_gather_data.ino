@@ -21,6 +21,7 @@ ESP8266 first reads acceleration data, then it connects to an MQTT server "broke
 #include <PubSubClient.h>
 #include<Wire.h>
 #include<Ticker.h>
+#include <PeakDetection.h>
 
 #define INTERVAL 100
 #define PIN_LED 2
@@ -42,6 +43,7 @@ ESP8266 first reads acceleration data, then it connects to an MQTT server "broke
 // Meritve senzorja 
 uint8_t gyroMeas[] = {0,0,0,0,0,0};
 uint8_t accMeas[] = {0,0,0,0,0,0};
+uint8_t accelMeas[6];  // TODO: could be accMeas - refractor
 
 // Stevilo uzorcev za kalibracijo
 #define CAL_NO 1000
@@ -53,13 +55,25 @@ uint8_t iter = 0;
 // Update these with values suitable for your network.
 
 //const char* ssid = "esp8266";
-const char *ssid = "Mi Phone";
+const char *ssid = "fake TV";
 //const char* password = "adminadmin";
-const char *password = "6a2ce2f58db9";
-const char* mqtt_server = "broker.mqtt-dashboard.com";
+const char *password = "testtest1";
+const char* mqtt_server = "broker.hivemq.com";
+const int mqtt_port = 1883;
+// const char* mqtt_server = "broker.mqtt-dashboard.com";
 const char* topic = "AljazACCData"; 
 String str = "";
 
+int msgSendCount = 0;
+float delAccel = 1.0/16384.0;
+float delGyro = 1.0/131.0;
+
+PeakDetection peakDetectionAccX;                     // create PeakDetection object
+PeakDetection peakDetectionAccY;                     // create PeakDetection object
+PeakDetection peakDetectionAccZ;                     // create PeakDetection object
+PeakDetection peakDetectionGyrX;                     // create PeakDetection object
+PeakDetection peakDetectionGyrY;                     // create PeakDetection object
+PeakDetection peakDetectionGyrZ;                     // create PeakDetection object
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -80,9 +94,15 @@ float gyroZ_off = 0;
 float accX_off = 0;
 float accY_off = 0;
 float accZ_off = 0;
-float value_x;
-float value_y;
-float value_z;
+float gyro_x;
+float gyro_y;
+float gyro_z;
+float acc_x;
+float acc_y;
+float acc_z;
+int16_t accelX;
+int16_t accelY;
+int16_t accelZ;
 // funkcije:
 void beriPodatke();
 void acc_config();
@@ -303,97 +323,35 @@ void reconnect() {
   }
 }
 
-void calibrateGyro(){
-  //Funkcija za kalibracijo. Če ploščico pustimo v stanju mirovanja. Tu bi pričakoval 0, ampkak bo nekaj drugače od 0. Želimo ugotoviti koliko je ta razlika in ga naslednjič odstranimo,
-  //ker to je nek bias, šum. S to funkcijo to naredimo. Tu najdemo povprečje meritev teh biasov, šumov. Podobno lahko naredimo za pospeškometer, le zamenjati moramo registre.
-  uint32_t ITER = 1000; // Stevilo vzorcev za glajenje 
-  int32_t tmp;
-  Serial.println("Kalibracija ziroskopa");
-  for(int i=0; i< CAL_NO; i++){
-     I2CReadRegister(MPU_ADD,GYRO_MEAS_REG,6,gyroMeas);
-     // GYRO_XOUT = Gyro_Sensitivity * X_angular_rate
-     tmp = (((int8_t)gyroMeas[0] << 8) + (uint8_t)gyroMeas[1]);
-     gyroX_off += tmp*1.0/131.0; //iz integerja v kotno histrost. Le deliti moramo s 131.
-      // GYRO_YOUT = Gyro_Sensitivity * Y_angular_rate
-     tmp = (((int8_t)gyroMeas[2] << 8) + (uint8_t)gyroMeas[3]);
-     gyroY_off += tmp*1.0/131.0;
-     // GYRO_ZOUT = Gyro_Sensitivity * Z_angular_rate
-     tmp = (((int8_t)gyroMeas[4] << 8) + (uint8_t)gyroMeas[5]);
-     gyroZ_off += tmp*1.0/131.0;
-     Serial.print(".");
-  }
-  Serial.println("Konec kalibracije");
 
-  gyroX_off /= CAL_NO;
-  gyroY_off /= CAL_NO;
-  gyroZ_off /= CAL_NO;
-  
-  /*Serial.println("Ziroskop X os");
-  Serial.println(gyroX_off);
-  Serial.println("Ziroskop Y os");
-  Serial.println(gyroY_off);
-  Serial.println("Ziroskop Z os");
-  Serial.println(gyroZ_off);*/
-
-}
-
-/*void calibrateAccelerometer() {
-  uint32_t ITER = 1000; // Number of samples for smoothing
-  int32_t tmp;
-  Serial.println("Calibrating accelerometer");
-
-  for (int i = 0; i < CAL_NO; i++) {
-    int16_t accelMeas[3];
-    I2CReadRegister(MPU_ADD, ACC_MEAS_REG, 6, (uint8_t *)accelMeas);
-
-    accelerometerX_off += accelMeas[0] / 16384.0;
-    accelerometerY_off += accelMeas[1] / 16384.0;
-    accelerometerZ_off += (accelMeas[2] / 16384.0) - 1.0; // Subtract 1g for the Z-axis
-
-    Serial.print(".");
-  }
-  Serial.println("Calibration complete");
-
-  accelerometerX_off /= CAL_NO;
-  accelerometerY_off /= CAL_NO;
-  accelerometerZ_off /= CAL_NO;
-
-  /*Serial.println("Accelerometer X offset");
-  Serial.println(accelX_off);
-  Serial.println("Accelerometer Y offset");
-  Serial.println(accelY_off);
-  Serial.println("Accelerometer Z offset");
-  Serial.println(accelZ_off);
-}*/
 
 void calibrateSensors(){
   //Funkcija za kalibracijo. Če ploščico pustimo v stanju mirovanja. Tu bi pričakoval 0, ampkak bo nekaj drugače od 0. Želimo ugotoviti koliko je ta razlika in ga naslednjič odstranimo,
   //ker to je nek bias, šum. S to funkcijo to naredimo. Tu najdemo povprečje meritev teh biasov, šumov. Podobno lahko naredimo za pospeškometer, le zamenjati moramo registre.
-  uint32_t ITER = 1000; // Stevilo vzorcev za glajenje 
   int32_t tmp;
   Serial.println("Kalibracija ziroskopa in pospeskometra");
   for(int i=0; i< CAL_NO; i++){
      I2CReadRegister(MPU_ADD,GYRO_MEAS_REG,6,gyroMeas);
      // GYRO_XOUT = Gyro_Sensitivity * X_angular_rate
      tmp = (((int8_t)gyroMeas[0] << 8) + (uint8_t)gyroMeas[1]);
-     gyroX_off += tmp*1.0/131.0; //iz integerja v kotno histrost. Le deliti moramo s 131.
+     gyroX_off += tmp; //iz integerja v kotno histrost. Le deliti moramo s 131.
       // GYRO_YOUT = Gyro_Sensitivity * Y_angular_rate
      tmp = (((int8_t)gyroMeas[2] << 8) + (uint8_t)gyroMeas[3]);
-     gyroY_off += tmp*1.0/131.0;
+     gyroY_off += tmp;
      // GYRO_ZOUT = Gyro_Sensitivity * Z_angular_rate
      tmp = (((int8_t)gyroMeas[4] << 8) + (uint8_t)gyroMeas[5]);
-     gyroZ_off += tmp*1.0/131.0;
+     gyroZ_off += tmp;
 
      I2CReadRegister(MPU_ADD,ACC_MEAS_REG,6,accMeas);
      // ACC_XOUT = Acc_Sensitivity * X_acceleration
      tmp = (((int8_t)accMeas[0] << 8) + (uint8_t)accMeas[1]);
-     accX_off += tmp*1.0/16384.0;
+     accX_off += tmp*delAccel;
      // ACC_YOUT = Acc_Sensitivity * Y_acceleration
      tmp = (((int8_t)accMeas[2] << 8) + (uint8_t)accMeas[3]);
-     accY_off += tmp*1.0/16384.0;
+     accY_off += tmp*delAccel;
      // ACC_ZOUT = Acc_Sensitivity * Z_acceleration
      tmp = (((int8_t)accMeas[4] << 8) + (uint8_t)accMeas[5]);
-     accZ_off += tmp*1.0/16384.0;
+     accZ_off += tmp*delAccel;
      
      Serial.print(".");
   }
@@ -407,19 +365,19 @@ void calibrateSensors(){
   accY_off /= CAL_NO;
   accZ_off /= CAL_NO;
   
-  /*Serial.println("Ziroskop X os");
+  Serial.print("Ziroskop X os");
   Serial.println(gyroX_off);
-  Serial.println("Ziroskop Y os");
+  Serial.print("Ziroskop Y os");
   Serial.println(gyroY_off);
-  Serial.println("Ziroskop Z os");
+  Serial.print("Ziroskop Z os");
   Serial.println(gyroZ_off);
 
-  Serial.println("Pospeskometer X os");
+  Serial.print("Pospeskometer X os");
   Serial.println(accX_off);
-  Serial.println("Pospeskometer Y os");
+  Serial.print("Pospeskometer Y os");
   Serial.println(accY_off);
-  Serial.println("Pospeskometer Z os");
-  Serial.println(accZ_off);*/
+  Serial.print("Pospeskometer Z os");
+  Serial.println(accZ_off);
 }
 
 
@@ -428,18 +386,15 @@ void readData() {
 
   I2CReadRegister(MPU_ADD,GYRO_MEAS_REG,6,gyroMeas);
   // GYRO_XOUT = Gyro_Sensitivity * X_angular_rate
-  tmp = (((int16_t)gyroMeas[0] << 8) + (uint8_t)gyroMeas[1]);
-  value_x = tmp*1.0/131.0 - gyroX_off;
+  tmp = (((int8_t)gyroMeas[0] << 8) + (uint8_t)gyroMeas[1]);
+  gyro_x = (tmp - gyroX_off) *delGyro;
   // GYRO_YOUT = Gyro_Sensitivity * Y_angular_rate
-  tmp = (((int16_t)gyroMeas[2] << 8) + (uint8_t)gyroMeas[3]);
-  value_y = tmp*1.0/131.0 - gyroY_off;
+  tmp = (((int8_t)gyroMeas[2] << 8) + (uint8_t)gyroMeas[3]);
+  gyro_y = (tmp - gyroY_off) *delGyro;
   // GYRO_ZOUT = Gyro_Sensitivity * Z_angular_rate
-  tmp = (((int16_t)gyroMeas[4] << 8) + (uint8_t)gyroMeas[5]);
-  value_z = tmp*1.0/131.0 - gyroZ_off;
+  tmp = (((int8_t)gyroMeas[4] << 8) + (uint8_t)gyroMeas[5]);
+  gyro_z = (tmp - gyroZ_off) *delGyro;
 
-  //accelerometer
-  uint8_t accelMeas[6];
-  int16_t accelX, accelY, accelZ;
   float accelX_g, accelY_g, accelZ_g;
 
   I2CReadRegister(MPU_ADD,ACC_MEAS_REG,6,accelMeas);
@@ -447,31 +402,38 @@ void readData() {
   accelY = (((int16_t)accelMeas[2]) << 8) | accelMeas[3];
   accelZ = (((int16_t)accelMeas[4]) << 8) | accelMeas[5];
 
-  accelX_g = accelX / 16384.0;
-  accelY_g = accelY / 16384.0;
-  accelZ_g = accelZ / 16384.0;
+  accelX_g = accelX *delAccel;
+  accelY_g = accelY *delAccel;
+  accelZ_g = accelZ *delAccel;
 
-  //Serial.print("Accel X: ");
-  //Serial.println(accelX_g, accelY_g, accelZ_g, value_x, value_y, value_z);
-  /*Serial.print(" g, Accel Y: ");
-  Serial.print(accelY_g);
-  Serial.print(" g, Accel Z: ");
-  Serial.print(accelZ_g);
-  Serial.println(" g");
-  Serial.println(value_x);
-  Serial.println(value_y);
-  Serial.println(value_z);*/
-  Serial.print(accelX_g);
-  Serial.print(", ");
-  Serial.print(accelY_g);
-  Serial.print(", ");
-  Serial.print(accelZ_g);
-  Serial.print(", ");
-  Serial.print(value_x);
-  Serial.print(", ");
-  Serial.print(value_y);
-  Serial.print(", ");
-  Serial.println(value_z);
+  peakDetectionAccX.add(accelX_g);
+  peakDetectionAccY.add(accelY_g);
+  peakDetectionAccZ.add(accelZ_g);
+
+  peakDetectionGyrX.add(gyro_x);
+  peakDetectionGyrY.add(gyro_y);
+  peakDetectionGyrZ.add(gyro_z);
+
+  if (++iter % 10 == 0) {  // to achieve 10Hz with 10 sample smoothing
+    double filAccX = peakDetectionAccX.getFilt();
+    double filAccY = peakDetectionAccY.getFilt();
+    double filAccZ = peakDetectionAccZ.getFilt();
+    double filGyrX = peakDetectionGyrX.getFilt();
+    double filGyrY = peakDetectionGyrY.getFilt();
+    double filGyrZ = peakDetectionGyrZ.getFilt();
+    Serial.printf("accelX_g: %8.4f, accelY_g: %8.4f, accelZ_g: %8.4f, gyro_x: %8.4f, gyro_y: %8.4f, gyro_z: %8.4f\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+
+    client.loop();
+    snprintf(msg, MSG_BUFFER_SIZE, "%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f", msgSendCount++, filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+    // Serial.print("Publish message: ");
+    // Serial.println(msg);
+    client.publish(topic, msg);
+
+    iter = 0;
+  }
+
+
+  
 }
 
 void setup() {
@@ -479,8 +441,16 @@ void setup() {
   pinMode(BUILTIN_LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   Serial.begin(115200);
   setup_wifi();
-  client.setServer(mqtt_server, 1883);
+  client.setServer(mqtt_server, mqtt_port);
   client.setBufferSize(1000000);
+
+  const int SMOOTHING_WINDOW_SIZE = 10;
+  peakDetectionAccX.begin(SMOOTHING_WINDOW_SIZE, 3, 0.6);
+  peakDetectionAccY.begin(SMOOTHING_WINDOW_SIZE, 3, 0.6);
+  peakDetectionAccZ.begin(SMOOTHING_WINDOW_SIZE, 3, 0.6);
+  peakDetectionGyrX.begin(SMOOTHING_WINDOW_SIZE, 3, 0.6);
+  peakDetectionGyrY.begin(SMOOTHING_WINDOW_SIZE, 3, 0.6);
+  peakDetectionGyrZ.begin(SMOOTHING_WINDOW_SIZE, 3, 0.6);
 
   // Inicializiramo I2C na podanih pinih
   Wire.begin(12,14);
@@ -490,11 +460,8 @@ void setup() {
   Serial.println("in setup");
   // calibrate both sensors
   calibrateSensors();
-  //calibrateGyro();
-  //calibrateAccelerometer();
 
-  tick.attach_ms(100, readData);
-  //tick.attach_ms(100, beriPodatke);
+  tick.attach_ms(10, readData);  // 100 Hz
 
   if (!client.connected()) {
     reconnect();
