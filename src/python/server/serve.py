@@ -93,11 +93,11 @@ def on_message(client, userdata, msg):
 
     elif "DATE" in msg:
         # search for date in file and return counters. Message format example receive:
-        #   DATE:2020-12-01
+        #   DATE;2020-12-01
         # return:
         #   2020-12-01;1;2;3
         # (1 = COUNT_WALK, 2 = COUNT_RUN, 3 = COUNT_BIKE)
-        msg = msg.split(":")
+        msg = msg.split(";")
         date_str = msg[1]
         str_return = get_date_counters(date_str)
 
