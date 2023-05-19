@@ -1,4 +1,4 @@
-#include "MlClassifier.h"
+/*#include "MlClassifier.h"
 
 void setup() {
     Serial.begin(115200);
@@ -47,4 +47,350 @@ void loop() {
     Serial.println("input18: " + String(mlClassifier.predict(input18)) + " should be: 1");
     float input19[30] = {-0.691500, -1.520400, 0.009800, -14.813400, 12.631900, 128.958800, -0.523200, -1.422300, 0.047000, -19.308900, 30.465500, 128.058700, -0.484300, -0.900900, 0.041400, -10.253300, 33.644900, 47.787000, -0.024300, -0.312100, 0.254500, 27.744900, -8.655800, -59.175000, -0.054200, -0.266300, 0.311000, 37.618700, -35.240600, -125.753400};
     Serial.println("input19: " + String(mlClassifier.predict(input19)) + " should be: 0");
+}*/
+
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <PubSubClient.h>
+
+// Replace with your MQTT broker details
+const char* mqttServer = "broker.hivemq.com";
+const int mqttPort = 1883;
+const char* mqttUser = "your_mqtt_username";
+const char* mqttPassword = "your_mqtt_password";
+
+// Replace with your Wi-Fi credentials
+const char* ssid = "your_wifi_ssid";
+const char* password = "your_wifi_password";
+
+// Replace with your username and password
+#define USERNAME "Mi Phone"
+#define PASSWORD "6a2ce2f58db9"
+
+// Global flag to indicate if MQTT callback has been executed
+bool mqttCallbackExecuted = false;
+
+// Initialize server on port 80
+ESP8266WebServer server(80);
+
+// Initialize MQTT client
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+// Global variables
+const int PIN_LED = 2; // GPIO2
+bool ledState = false;
+String mqttResponse; // Variable to store the MQTT response
+
+/* ----------------------------------------------------------------
+ * is_authentified:
+ */
+// Check if header is present and correct
+bool is_authentified(){
+  if (server.hasHeader("Cookie")){
+    String cookie = server.header("Cookie");
+    if (cookie.indexOf("ESPSESSIONID=1") != -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ----------------------------------------------------------------
+ * handleLogin:
+ */
+// Login page, also called for disconnect
+void handleLogin(){
+  String msg;
+  if (server.hasHeader("Cookie")){
+    String cookie = server.header("Cookie");
+  }
+  if (server.hasArg("DISCONNECT")){
+    server.sendHeader("Location","/login");
+    server.sendHeader("Cache-Control","no-cache");
+    server.sendHeader("Set-Cookie","ESPSESSIONID=0");
+    server.send(301);
+    return;
+  }
+  if (server.hasArg("USERNAME") && server.hasArg("PASSWORD")){
+    if (server.arg("USERNAME") == USERNAME &&  server.arg("PASSWORD") == PASSWORD ){
+      server.sendHeader("Location","/");
+      server.sendHeader("Cache-Control","no-cache");
+      server.sendHeader("Set-Cookie","ESPSESSIONID=1");
+      server.send(301);
+      return;
+    }
+    msg = "Wrong username/password! try again.";
+  }
+  String content = "<html><body><form action='/login' method='POST'>To log in, enter user id and password:<br>";
+  content += "User:<input type='text' name='USERNAME' placeholder='user name'><br>";
+  content += "Password:<input type='password' name='PASSWORD' placeholder='password'><br>";
+  content += "<input type='submit' name='SUBMIT' value='Submit'></form>" + msg + "<br>";
+  content += "You can also go <a href='/inline'>here</a></body></html>";
+  server.send(200, "text/html", content);
+}
+
+/* ----------------------------------------------------------------
+ * handleRoot:
+ */
+// Root page can be accessed only if authentication is OK
+void handleRoot() {
+  String header;
+  if (!is_authentified()){
+    server.sendHeader("Location","/login");
+    server.sendHeader("Cache-Control","no-cache");
+    server.send(301);
+    return;
+  }
+  
+  // Add HTML code with JavaScript for counter
+  String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
+  content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
+  
+  // Add HTML code to turn on/off the built-in LED light
+  content += "<form action='/led' method='POST'>";
+  content += "<button name='led' value='" + String(!ledState) + "'>" + (ledState ? "Turn off" : "Turn on") + " LED</button>";
+  content += "</form>";
+  
+  // Add HTML code for history search window
+  content += "<br><h3>Search History</h3>";
+  content += "<form action='/history' method='POST'>";
+  content += "Date: <input type='date' name='date'><br>";
+  content += "<input type='submit' name='submit' value='Search'>";
+  content += "</form>";
+  
+  // Add JavaScript code for the counters
+  content += "<br><h3>Counters:</h3>";
+  content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+  content += "<h4>Walking</h4>";
+  content += "<p id='walking-counter'>0</p>";
+  content += "</div>";
+  content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+  content += "<h4>Jogging</h4>";
+  content += "<p id='jogging-counter'>0</p>";
+  content += "</div>";
+  content += "<div class='counter-column' style='display: inline-block;'>";
+  content += "<h4>Cycling</h4>";
+  content += "<p id='cycling-counter'>0</p>";
+  content += "</div>";
+  content += "<button onclick='refreshPage()'>End activity</button>";
+  content += "<script>";
+  content += "setInterval(updateCounters, 5000);";
+  content += "function updateCounters() {";
+  content += "var walkingCounterElement = document.getElementById('walking-counter');";
+  content += "var joggingCounterElement = document.getElementById('jogging-counter');";
+  content += "var cyclingCounterElement = document.getElementById('cycling-counter');";
+  content += "var walkingCounterValue = parseInt(walkingCounterElement.innerHTML);";
+  content += "var joggingCounterValue = parseInt(joggingCounterElement.innerHTML);";
+  content += "var cyclingCounterValue = parseInt(cyclingCounterElement.innerHTML);";
+  content += "walkingCounterValue++;";
+  content += "joggingCounterValue++;";
+  content += "cyclingCounterValue++;";
+  content += "walkingCounterElement.innerHTML = walkingCounterValue;";
+  content += "joggingCounterElement.innerHTML = joggingCounterValue;";
+  content += "cyclingCounterElement.innerHTML = cyclingCounterValue;";
+  content += "}";
+  content += "function refreshPage() {";
+  content += "location.reload();";
+  content += "}";
+  content += "</script>";
+  
+  content += "</body></html>";
+  server.send(200, "text/html", content);
+}
+
+
+
+
+
+/* ----------------------------------------------------------------
+ * handleLED:
+ */
+void handleLED(){
+  if (!is_authentified()){
+    server.sendHeader("Location","/login");
+    server.sendHeader("Cache-Control","no-cache");
+    server.send(301);
+    return;
+  }
+  
+  if (server.hasArg("led")) {
+    ledState = server.arg("led") == "1";
+    digitalWrite(PIN_LED, ledState ? HIGH : LOW);
+  }
+  
+  server.sendHeader("Location","/");
+  server.sendHeader("Cache-Control","no-cache");
+  server.send(301);
+}
+
+/* ----------------------------------------------------------------
+ * handleHistory:
+ */
+void handleHistory(){
+  if (!is_authentified()){
+    server.sendHeader("Location","/login");
+    server.sendHeader("Cache-Control","no-cache");
+    server.send(301);
+    return;
+  }
+  
+  if (server.hasArg("date")) {
+    String date = server.arg("date");
+    
+    // Publish MQTT request
+    if (client.connected()) {
+      client.publish("AljazACCData", "fuck you!!!!!!!");
+    }
+  }
+  
+  // Redirect to a new HTML page to display the response
+  server.sendHeader("Location","/response");
+  server.sendHeader("Cache-Control","no-cache");
+  server.send(301);
+}
+
+/* ----------------------------------------------------------------
+ * handleResponse:
+ */
+void handleResponse(){
+  if (!is_authentified()){
+    server.sendHeader("Location","/login");
+    server.sendHeader("Cache-Control","no-cache");
+    server.send(301);
+    return;
+  }
+
+  while (!mqttCallbackExecuted) {
+    client.loop();
+    delay(10);
+  }
+  
+  String content = "<html><body>";
+  
+  // Add MQTT response here
+  content += "<h2>MQTT Response:</h2>";
+  content += "<p>" + mqttResponse + "</p>";
+  
+  content += "</body></html>";
+  server.send(200, "text/html", content);
+
+  // Reset the flag after serving the content
+  mqttCallbackExecuted = false;
+}
+
+/* ----------------------------------------------------------------
+ * handleNotFound:
+ */
+// No need for authentication
+void handleNotFound(){
+  String content = "<html><body><h1>404 Not Found</h1>";
+  content += "<p>The requested URL was not found on this server.</p>";
+  content += "<p><a href='/'>Back to the main page</a></p>";
+  content += "</body></html>";
+  server.send(404, "text/html", content);
+}
+
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Create a random client ID
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    // Attempt to connect
+    if (client.connect(clientId.c_str())) {
+      Serial.println("connected");
+      // ... and resubscribe
+      client.subscribe("AljazACCDataRec");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+/* ----------------------------------------------------------------
+ * setup:
+ */
+void setup() {
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW);
+  
+  Serial.begin(115200);
+
+  WiFi.mode(WIFI_STA);
+  // Connect to Wi-Fi network
+  WiFi.begin(USERNAME, PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+  IPAddress myIP = WiFi.localIP();
+  Serial.println(myIP);
+
+  // Set up MQTT client
+  client.setServer(mqttServer, mqttPort);
+  client.setCallback([](char* topic, byte* payload, unsigned int length) {
+    // MQTT callback function
+    // Process the received MQTT response here
+    Serial.print("in callback: ");
+    Serial.println(topic);
+    mqttResponse = "";
+    for (int i = 0; i < length; i++) {
+      mqttResponse += (char)payload[i];
+    }
+    Serial.println(mqttResponse);
+    mqttCallbackExecuted = true;
+  });
+
+  // Server settings
+  server.on("/", handleRoot);
+  server.on("/login", handleLogin);
+  server.on("/led", handleLED);
+  server.on("/history", handleHistory);
+  server.on("/response", handleResponse);
+  server.on("/inline", [](){
+    server.send(200, "text/plain", "This works without the need for authentication.");
+  });
+  server.onNotFound(handleNotFound);
+  
+  // Collect headers to be recorded
+  const char* headerkeys[] = {"User-Agent", "Cookie"};
+  size_t headerkeyssize = sizeof(headerkeys) / sizeof(char*);
+  // Ask server to track these headers
+  server.collectHeaders(headerkeys, headerkeyssize );
+  
+  // Start the server
+  server.begin();
+
+  Serial.println("HTTP server started");
+
+  if (!client.connected()) {
+    reconnect();
+  }
+}
+
+/* ----------------------------------------------------------------
+ * loop:
+ */
+void loop() {
+  server.handleClient();
+
+//   // Check MQTT client connection
+//   if (!client.connected()) {
+//     // Attempt to reconnect
+//     if (client.connect("ESP8266Client", mqttUser, mqttPassword)) {
+//       // Subscribe to necessary MQTT topics
+//       client.subscribe("history_response");
+//     }
+//   }
+
+  // Handle MQTT client events
+  client.loop();
 }
