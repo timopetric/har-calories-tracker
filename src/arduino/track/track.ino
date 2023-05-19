@@ -81,6 +81,13 @@ PubSubClient client(espClient);
 const int PIN_LED = 2; // GPIO2
 bool ledState = false;
 String mqttResponse; // Variable to store the MQTT response
+int count_walk = 0;
+int count_run = 0;
+int count_bike = 0;
+int history_walk = 0;
+int history_run = 0;
+int history_bike = 0;
+char *history_date;
 
 /* ----------------------------------------------------------------
  * is_authentified:
@@ -142,6 +149,18 @@ void handleRoot() {
     server.send(301);
     return;
   }
+
+  if (client.connected()) {
+    String send = "STORE;" + String(count_walk) + ";" + String(count_run) + ";" + String(count_bike);
+    client.publish("AljazACCData", send.c_str());
+    count_walk = 0; count_run = 0; count_bike = 0;
+  }
+
+  while (!mqttCallbackExecuted) {
+    client.loop();
+    delay(10);
+  }
+  mqttCallbackExecuted = false;
   
   // Add HTML code with JavaScript for counter
   String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
@@ -155,7 +174,7 @@ void handleRoot() {
   // Add HTML code for history search window
   content += "<br><h3>Search History</h3>";
   content += "<form action='/history' method='POST'>";
-  content += "Date: <input type='date' name='date'><br>";
+  content += "Date: <input type='text' name='date'><br>"; // Changed type to 'text'
   content += "<input type='submit' name='submit' value='Search'>";
   content += "</form>";
   
@@ -203,6 +222,7 @@ void handleRoot() {
 
 
 
+
 /* ----------------------------------------------------------------
  * handleLED:
  */
@@ -237,10 +257,12 @@ void handleHistory(){
   
   if (server.hasArg("date")) {
     String date = server.arg("date");
+    date = "DATE;" + date;
+    // Serial.print(date);
     
     // Publish MQTT request
     if (client.connected()) {
-      client.publish("AljazACCData", "fuck you!!!!!!!");
+      client.publish("AljazACCData", date.c_str());
     }
   }
   
@@ -262,18 +284,60 @@ void handleResponse(){
   }
 
   while (!mqttCallbackExecuted) {
+    Serial.println("in response");
     client.loop();
     delay(10);
   }
+
+    Serial.println("fdsfasf");
+    Serial.println(history_walk);
+    Serial.println(history_run);
+    Serial.println(history_bike);
+
   
-  String content = "<html><body>";
-  
-  // Add MQTT response here
-  content += "<h2>MQTT Response:</h2>";
-  content += "<p>" + mqttResponse + "</p>";
-  
-  content += "</body></html>";
-  server.send(200, "text/html", content);
+    //   String content = "<html><body>";
+    
+    //   // Add MQTT response here
+    //   content += "<h2>MQTT Response:</h2>";
+    //   content += "<p>" + mqttResponse + "</p>";
+    
+    //   content += "</body></html>";
+    //   server.send(200, "text/html", content);
+    String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
+    content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
+
+    // Add JavaScript code for the counters
+    content += "<br><h3>Counters:</h3>";
+    content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+    content += "<h4>Walking</h4>";
+    content += "<p id='walking-counter'>" + String(history_walk) + "</p>";
+    content += "</div>";
+    content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+    content += "<h4>Jogging</h4>";
+    content += "<p id='jogging-counter'>" + String(history_run) + "</p>";
+    content += "</div>";
+    content += "<div class='counter-column' style='display: inline-block;'>";
+    content += "<h4>Cycling</h4>";
+    content += "<p id='cycling-counter'>" + String(history_bike) + "</p>";
+    content += "</div>";
+    content += "<script>";
+    content += "setInterval(updateCounters, 5000);";
+    content += "function updateCounters() {";
+    content += "  var walkingCounterElement = document.getElementById('walking-counter');";
+    content += "  var joggingCounterElement = document.getElementById('jogging-counter');";
+    content += "  var cyclingCounterElement = document.getElementById('cycling-counter');";
+    content += "  walkingCounterElement.innerHTML = " + String(history_walk) + ";";
+    content += "  joggingCounterElement.innerHTML = " + String(history_run) + ";";
+    content += "  cyclingCounterElement.innerHTML = " + String(history_bike) + ";";
+    content += "}";
+    content += "function refreshPage() {";
+    content += "  location.reload();";
+    content += "}";
+    content += "</script>";
+
+
+    content += "</body></html>";
+    server.send(200, "text/html", content);
 
   // Reset the flag after serving the content
   mqttCallbackExecuted = false;
@@ -337,17 +401,44 @@ void setup() {
   // Set up MQTT client
   client.setServer(mqttServer, mqttPort);
   client.setCallback([](char* topic, byte* payload, unsigned int length) {
-    // MQTT callback function
-    // Process the received MQTT response here
-    Serial.print("in callback: ");
-    Serial.println(topic);
-    mqttResponse = "";
-    for (int i = 0; i < length; i++) {
-      mqttResponse += (char)payload[i];
+  // MQTT callback function
+  // Process the received MQTT response here
+  Serial.print("in callback: ");
+  Serial.println(topic);
+  mqttResponse = "";
+  for (int i = 0; i < length; i++) {
+    mqttResponse += (char)payload[i];
+  }
+  Serial.println(mqttResponse);
+  mqttCallbackExecuted = true;
+
+  // Parse mqttResponse by ';'
+  char* temp = strdup(mqttResponse.c_str());
+  char* token = strtok(temp, ";");
+  if (token != NULL) {
+    // Check the first element
+    if (strcmp(token, "STORED") == 0) {
+      // First element is "STORED"
+      // Perform actions accordingly
+      Serial.println("First element is STORED");
+    } else if (strcmp(token, "DATE") == 0) {
+      // First element is "DATE"
+      // store the second element in history_walk, the third in history_run and the fourth in history_bike
+        token = strtok(NULL, ";");
+        history_date = token;
+        token = strtok(NULL, ";");
+        history_walk = atoi(token);
+        token = strtok(NULL, ";");
+        history_run = atoi(token);
+        token = strtok(NULL, ";");
+        history_bike = atoi(token);
     }
-    Serial.println(mqttResponse);
-    mqttCallbackExecuted = true;
-  });
+  }
+  free(temp);
+ });
+
+
+
 
   // Server settings
   server.on("/", handleRoot);
