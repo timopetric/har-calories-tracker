@@ -100,7 +100,7 @@ char *yesterday_date;
 
 // ------------------------------------------
 
-#define WINDOW_SIZE 30
+#define WINDOW_SIZE 20
 
 #define INTERVAL 100
 #define PIN_LED 2
