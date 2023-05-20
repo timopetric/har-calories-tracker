@@ -6,12 +6,12 @@ from sklearn.preprocessing import LabelEncoder
 from everywhereml.sklearn.ensemble import RandomForestClassifier
 
 # This params currently achieve 99.76% accuracy on the MotionSense (jogging and walking) test dataset
-WINDOW_SIZE = 5   # 0.5 seconds
-N_ESTIMATORS = 5  # number of trees in the forest
+WINDOW_SIZE = 30   # 0.5 seconds
+N_ESTIMATORS = 20  # number of trees in the forest
 NUM_CLASSES = 6    # x, y, z accel + gyro
 RANDOM_SEED = 42   # for reproducibility
 
-labels = ["wlk", "bik"]
+labels = ["wlk", "bik", "non"]
 
 # path_glob = "data/MotionSense/{label}*/*.csv"
 path_glob = "data/{label}*.csv"

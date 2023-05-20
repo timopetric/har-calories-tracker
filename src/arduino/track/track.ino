@@ -68,6 +68,9 @@ const char* password = "testtest1";
 // Global flag to indicate if MQTT callback has been executed
 bool mqttCallbackExecuted = false;
 
+
+
+
 // Initialize server on port 80
 ESP8266WebServer server(80);
 
@@ -96,6 +99,8 @@ char *yesterday_date;
 
 
 // ------------------------------------------
+
+#define WINDOW_SIZE 30
 
 #define INTERVAL 100
 #define PIN_LED 2
@@ -128,7 +133,7 @@ uint8_t iter = 0;
 uint8_t iter_win = 0;
 
 // array of doubles of size 30
-float window_prediction[30];
+float window_prediction[6*WINDOW_SIZE];
 
 int msgSendCount = 0;
 float delAccel = 1.0/16384.0;
@@ -283,30 +288,26 @@ void readData() {
         double filGyrX = peakDetectionGyrX.getFilt();
         double filGyrY = peakDetectionGyrY.getFilt();
         double filGyrZ = peakDetectionGyrZ.getFilt();
-        Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+        // Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
 
-        // Serial.println(filAccX);
-
-        // // fill array window_prediction with data combining all 6 axis 5 times (30 samples) with for loop
-        // // convert double filAccX to string and then to float
-        
+        // fill array window_prediction with data combining all 6 axis 5 times (30 samples)
         window_prediction[iter_win*6] = (float) filAccX;
         window_prediction[iter_win*6+1] = (float) filAccY;
         window_prediction[iter_win*6+2] = (float) filAccZ;
         window_prediction[iter_win*6+3] = (float) filGyrX;
         window_prediction[iter_win*6+4] = (float) filGyrY;
         window_prediction[iter_win*6+5] = (float) filGyrZ;
-
         iter_win += 1;
-        if (iter_win == 5) {
+
+        if (iter_win == WINDOW_SIZE) {
             // classify data
+            int prediction = mlClassifier.predict(window_prediction);
+            Serial.println("Classifier prediction: " + String(prediction));
             Serial.print("\t");
-            for (int i = 0; i < 30; i++) {
-                Serial.print(window_prediction[i]);
-                Serial.print(" ");
+            for (int i = 0; i < WINDOW_SIZE; i++) {
+                Serial.printf("%7.4f", window_prediction[i]);
             }
             Serial.println();
-            Serial.println("Classifier prediction: " + String(mlClassifier.predict(window_prediction)));
             
             iter_win = 0;
         }
