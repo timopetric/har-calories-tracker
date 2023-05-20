@@ -125,6 +125,10 @@ uint8_t accelMeas[6];  // TODO: could be accMeas - refractor
 #define READ_NO 10
 // Globalni stevec zanke 
 uint8_t iter = 0;
+uint8_t iter_win = 0;
+
+// array of doubles of size 30
+float window_prediction[30];
 
 int msgSendCount = 0;
 float delAccel = 1.0/16384.0;
@@ -279,7 +283,34 @@ void readData() {
         double filGyrX = peakDetectionGyrX.getFilt();
         double filGyrY = peakDetectionGyrY.getFilt();
         double filGyrZ = peakDetectionGyrZ.getFilt();
-        Serial.printf("accelX_g: %8.4f, accelY_g: %8.4f, accelZ_g: %8.4f, gyro_x: %8.4f, gyro_y: %8.4f, gyro_z: %8.4f\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+        Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+
+        // Serial.println(filAccX);
+
+        // // fill array window_prediction with data combining all 6 axis 5 times (30 samples) with for loop
+        // // convert double filAccX to string and then to float
+        
+        window_prediction[iter_win*6] = (float) filAccX;
+        window_prediction[iter_win*6+1] = (float) filAccY;
+        window_prediction[iter_win*6+2] = (float) filAccZ;
+        window_prediction[iter_win*6+3] = (float) filGyrX;
+        window_prediction[iter_win*6+4] = (float) filGyrY;
+        window_prediction[iter_win*6+5] = (float) filGyrZ;
+
+        iter_win += 1;
+        if (iter_win == 5) {
+            // classify data
+            Serial.print("\t");
+            for (int i = 0; i < 30; i++) {
+                Serial.print(window_prediction[i]);
+                Serial.print(" ");
+            }
+            Serial.println();
+            Serial.println("Classifier prediction: " + String(mlClassifier.predict(window_prediction)));
+            
+            iter_win = 0;
+        }
+
 
         // client.loop();
         // snprintf(msg, MSG_BUFFER_SIZE, "%d;%.4f;%.4f;%.4f;%.4f;%.4f;%.4f", msgSendCount++, filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
