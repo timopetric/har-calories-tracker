@@ -100,7 +100,7 @@ char *yesterday_date;
 
 // ------------------------------------------
 
-#define WINDOW_SIZE 20
+#define WINDOW_SIZE 50
 
 #define INTERVAL 100
 #define PIN_LED 2
@@ -135,9 +135,11 @@ uint8_t iter_win = 0;
 // array of doubles of size 30
 float window_prediction[6*WINDOW_SIZE];
 
-int msgSendCount = 0;
+int iterSampleCount = 0;
+int lastSampleIter = 0;
 float delAccel = 1.0/16384.0;
 float delGyro = 1.0/131.0;
+int prediction = 1;
 
 PeakDetection peakDetectionAccX;                     // create PeakDetection object
 PeakDetection peakDetectionAccY;                     // create PeakDetection object
@@ -300,8 +302,40 @@ void readData() {
         iter_win += 1;
 
         if (iter_win == WINDOW_SIZE) {
+            // 50 samples - 5 seconds - collected, time to classify
+            
             // classify data
-            int prediction = mlClassifier.predict(window_prediction);
+            prediction = mlClassifier.predict(window_prediction);
+
+            // array of thresholds for each class
+            const float THRESHOLDS[3] = {1.2, 999999.9, 1.8};
+            const int AWAY_FROM_PREVIOUS_PEAK[3] = {10, 8, 10};
+            int *COUNTERS[3] = {&count_bike, &count_run, &count_walk};      // TODO: run is currently "still"
+
+            float threshold = THRESHOLDS[prediction];
+            int away_from_previous_peak = AWAY_FROM_PREVIOUS_PEAK[prediction];
+
+            // select counter for current class
+            int *counter = COUNTERS[prediction];
+
+            for (int zamik = 0; zamik < WINDOW_SIZE; zamik++) {
+                iterSampleCount++;
+                float accX = window_prediction[zamik*6];
+                float accY = window_prediction[zamik*6+1];
+                float accZ = window_prediction[zamik*6+2];
+                float intensity = sqrt(accX*accX + accY*accY + accZ*accZ);
+
+                // Serial.printf("iterSampleCount: %d, intensity: %f, threshold: %f, lastSampleIter: %d, away_from_previous_peak: %d\n", iterSampleCount, intensity, threshold, lastSampleIter, away_from_previous_peak);
+
+                if (intensity > threshold && iterSampleCount - lastSampleIter > away_from_previous_peak) {
+                    lastSampleIter = iterSampleCount;
+                    (*counter)++;
+                    
+                    Serial.printf("prediction: %d, counters: bike %d, run %d, walk %d\n", prediction, count_bike, count_run, count_walk);
+
+                }
+            }            
+
             Serial.println("Classifier prediction: " + String(prediction));
             Serial.print("\t");
             for (int i = 0; i < WINDOW_SIZE; i++) {
@@ -909,9 +943,9 @@ void loop() {
     // Handle MQTT client events
     client.loop();
     delay(500);
-    walk = walk - 1;
-    run = run + 1;
-    bike = bike + 1;
+    // walk = walk - 1;
+    // run = run + 1;
+    // bike = bike + 1;
 //   Serial.println(walk);
 //   Serial.println("here in loop");
 
