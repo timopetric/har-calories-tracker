@@ -88,6 +88,10 @@ int history_walk = 0;
 int history_run = 0;
 int history_bike = 0;
 char *history_date;
+int yesterday_walk = 0;
+int yesterday_run = 0;
+int yesterday_bike = 0;
+char *yesterday_date;
 
 /* ----------------------------------------------------------------
  * is_authentified:
@@ -141,6 +145,24 @@ void handleLogin(){
  * handleRoot:
  */
 // Root page can be accessed only if authentication is OK
+String getCountersHTML() {
+  String countersHTML = "";
+  countersHTML += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+  countersHTML += "<h4>Walking</h4>";
+  countersHTML += "<p id='walking-counter'>" + String(count_walk) + "</p>";
+  countersHTML += "</div>";
+  countersHTML += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+  countersHTML += "<h4>Jogging</h4>";
+  countersHTML += "<p id='jogging-counter'>" + String(count_run) + "</p>";
+  countersHTML += "</div>";
+  countersHTML += "<div class='counter-column' style='display: inline-block;'>";
+  countersHTML += "<h4>Cycling</h4>";
+  countersHTML += "<p id='cycling-counter'>" + String(count_bike) + "</p>";
+  countersHTML += "</div>";
+
+  return countersHTML;
+}
+
 void handleRoot() {
   String header;
   if (!is_authentified()){
@@ -150,77 +172,98 @@ void handleRoot() {
     return;
   }
 
-  if (client.connected()) {
-    String send = "STORE;" + String(count_walk) + ";" + String(count_run) + ";" + String(count_bike);
-    client.publish("AljazACCData", send.c_str());
-    count_walk = 0; count_run = 0; count_bike = 0;
-  }
+//   while (!mqttCallbackExecuted) {
+//     client.loop();
+//     delay(10);
+//   }
+//   mqttCallbackExecuted = false;
 
-  while (!mqttCallbackExecuted) {
-    client.loop();
-    delay(10);
-  }
-  mqttCallbackExecuted = false;
-  
   // Add HTML code with JavaScript for counter
   String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
   content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
-  
+
   // Add HTML code to turn on/off the built-in LED light
   content += "<form action='/led' method='POST'>";
   content += "<button name='led' value='" + String(!ledState) + "'>" + (ledState ? "Turn off" : "Turn on") + " LED</button>";
   content += "</form>";
-  
+
   // Add HTML code for history search window
   content += "<br><h3>Search History</h3>";
   content += "<form action='/history' method='POST'>";
   content += "Date: <input type='text' name='date'><br>"; // Changed type to 'text'
   content += "<input type='submit' name='submit' value='Search'>";
   content += "</form>";
-  
+
   // Add JavaScript code for the counters
   content += "<br><h3>Counters:</h3>";
-  content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
-  content += "<h4>Walking</h4>";
-  content += "<p id='walking-counter'>0</p>";
-  content += "</div>";
-  content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
-  content += "<h4>Jogging</h4>";
-  content += "<p id='jogging-counter'>0</p>";
-  content += "</div>";
-  content += "<div class='counter-column' style='display: inline-block;'>";
-  content += "<h4>Cycling</h4>";
-  content += "<p id='cycling-counter'>0</p>";
-  content += "</div>";
-  content += "<button onclick='refreshPage()'>End activity</button>";
+  content += getCountersHTML();
+  content += "<button onclick='endActivity()'>End activity</button>";
+  content += "<button onclick='redirectToYesterday()'>Go to Yesterday</button>";
   content += "<script>";
   content += "setInterval(updateCounters, 5000);";
   content += "function updateCounters() {";
-  content += "var walkingCounterElement = document.getElementById('walking-counter');";
-  content += "var joggingCounterElement = document.getElementById('jogging-counter');";
-  content += "var cyclingCounterElement = document.getElementById('cycling-counter');";
-  content += "var walkingCounterValue = parseInt(walkingCounterElement.innerHTML);";
-  content += "var joggingCounterValue = parseInt(joggingCounterElement.innerHTML);";
-  content += "var cyclingCounterValue = parseInt(cyclingCounterElement.innerHTML);";
-  content += "walkingCounterValue++;";
-  content += "joggingCounterValue++;";
-  content += "cyclingCounterValue++;";
-  content += "walkingCounterElement.innerHTML = walkingCounterValue;";
-  content += "joggingCounterElement.innerHTML = joggingCounterValue;";
-  content += "cyclingCounterElement.innerHTML = cyclingCounterValue;";
+  content += "  var xhttp = new XMLHttpRequest();";
+  content += "  xhttp.onreadystatechange = function() {";
+  content += "    if (this.readyState == 4 && this.status == 200) {";
+  content += "      var response = JSON.parse(this.responseText);";
+  content += "      document.getElementById('walking-counter').innerHTML = response.count_walk;";
+  content += "      document.getElementById('jogging-counter').innerHTML = response.count_run;";
+  content += "      document.getElementById('cycling-counter').innerHTML = response.count_bike;";
+  content += "    }";
+  content += "  };";
+  content += "  xhttp.open('GET', '/getCounters', true);";
+  content += "  xhttp.send();";
   content += "}";
-  content += "function refreshPage() {";
-  content += "location.reload();";
+  content += "function endActivity() {";
+  content += "  var xhttp = new XMLHttpRequest();";
+  content += "  xhttp.onreadystatechange = function() {";
+  content += "    if (this.readyState == 4 && this.status == 200) {";
+  content += "      document.getElementById('counters').innerHTML = this.responseText;";
+  content += "    }";
+  content += "  };";
+  content += "  xhttp.open('GET', '/updateCounter', true);";
+  content += "  xhttp.send();";
+  content += "}";
+  content += "function redirectToYesterday() {";
+  content += "  window.location.href = '/yesterday';";
   content += "}";
   content += "</script>";
-  
+
   content += "</body></html>";
   server.send(200, "text/html", content);
 }
 
+// Handle the '/getCounters' endpoint
+void handleGetCounters() {
+  String response = "{";
+  response += "\"count_walk\": " + String(count_walk) + ",";
+  response += "\"count_run\": " + String(count_run) + ",";
+  response += "\"count_bike\": " + String(count_bike);
+  response += "}";
 
+  server.send(200, "application/json", response);
+}
 
+// Handle the '/updateCounter' endpoint
+void handleUpdateCounter() {
+  if (client.connected()) {
+    String send = "STORE;" + String(count_walk) + ";" + String(count_run) + ";" + String(count_bike);
+    client.publish("AljazACCData", send.c_str());
+    count_walk = 0; count_run = 0; count_bike = 0;
+  }
 
+  count_walk = 0;
+  count_run = 0;
+  count_bike = 0;
+
+  while (!mqttCallbackExecuted) {
+    client.loop();
+    delay(10);
+  }
+  String countersHTML = getCountersHTML();
+
+  server.send(200, "text/html", countersHTML);
+}
 
 
 /* ----------------------------------------------------------------
@@ -342,6 +385,113 @@ void handleResponse(){
   // Reset the flag after serving the content
   mqttCallbackExecuted = false;
 }
+int walk;
+int run;
+int bike;
+
+void handleYesterday() {
+  // show yesterday's data and compare it to today's
+  if (!is_authentified()) {
+    server.sendHeader("Location", "/login");
+    server.sendHeader("Cache-Control", "no-cache");
+    server.send(301);
+    return;
+  }
+
+  if (client.connected()) {
+    String send = "YESTERDAY;";
+    client.publish("AljazACCData", send.c_str());
+  }
+
+  while (!mqttCallbackExecuted) {
+    Serial.println("in in yesterday");
+    client.loop();
+    delay(10);
+  }
+  mqttCallbackExecuted = false;
+
+  int diff_walk = yesterday_walk - walk;
+  int diff_run = yesterday_run - run;
+  int diff_bike = yesterday_bike - bike;
+
+  String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
+  content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
+  content += "<style>";
+  content += ".counter-column {";
+  content += "  display: inline-block;";
+  content += "  margin-right: 20px;";
+  content += "  position: relative;";
+  content += "}";
+  content += ".counter-column::after {";
+  content += "  content: '';";
+  content += "  position: absolute;";
+  content += "  top: 0;";
+  content += "  right: -10px;"; // Adjust the value to control the position of the vertical line
+  content += "  height: 100%;";
+  content += "  width: 1px;";
+  content += "  background-color: black;"; // Change the color as needed
+  content += "}";
+  content += "</style>";
+  content += "<br><h3>Counters for yesterday:</h3>";
+  content += "<div class='counter-column'>";
+  content += "<h4>Walking</h4>";
+  content += "<p id='walking-counter'>" + String(yesterday_walk) + "</p>";
+  content += "<p id='walking-difference'>Steps needed to reach yesterday: " + String(diff_walk) + "</p>"; // Add difference column
+  content += "</div>";
+  content += "<div class='counter-column'>";
+  content += "<h4>Jogging</h4>";
+  content += "<p id='jogging-counter'>" + String(yesterday_run) + "</p>";
+  content += "<p id='jogging-difference'>Running steps needed to reach yesterday: " + String(diff_run) + "</p>"; // Add difference column
+  content += "</div>";
+  content += "<div class='counter-column'>";
+  content += "<h4>Cycling</h4>";
+  content += "<p id='cycling-counter'>" + String(yesterday_bike) + "</p>";
+  content += "<p id='cycling-difference'>Strokes needed to reach yesterday: " + String(diff_bike) + "</p>"; // Add difference column
+  content += "</div>";
+  content += "<script>";
+  content += "setInterval(updateCounters, 2000);"; // Update every 2 seconds
+  content += "function updateCounters() {";
+  content += "  var xhttp = new XMLHttpRequest();";
+  content += "  xhttp.onreadystatechange = function() {";
+  content += "    if (this.readyState == 4 && this.status == 200) {";
+  content += "      var response = JSON.parse(this.responseText);";
+  content += "      document.getElementById('walking-counter').innerHTML = response.yesterday_walk;";
+  content += "      document.getElementById('jogging-counter').innerHTML = response.yesterday_run;";
+  content += "      document.getElementById('cycling-counter').innerHTML = response.yesterday_bike;";
+  content += "      document.getElementById('walking-difference').innerHTML = 'Steps needed to reach yesterday: ' + response.diff_walk;";
+  content += "      document.getElementById('jogging-difference').innerHTML = 'Running steps needed to reach yesterday: ' + response.diff_run;";
+  content += "      document.getElementById('cycling-difference').innerHTML = 'Strokes needed to reach yesterday: ' + response.diff_bike;";
+  content += "    }";
+  content += "  };";
+  content += "  xhttp.open('GET', '/getDifference', true);";
+  content += "  xhttp.send();";
+  content += "}";
+  content += "</script>";
+  content += "</body></html>";
+  server.send(200, "text/html", content);
+
+  // Reset the flag after serving the content
+  mqttCallbackExecuted = false;
+}
+ 
+// Handle the '/getDifference' endpoint
+void handleGetDifference() {
+  int diff_walk = yesterday_walk - walk;
+  int diff_run = yesterday_run - run;
+  int diff_bike = yesterday_bike - bike;
+
+  String response = "{";
+  response += "\"yesterday_walk\": " + String(yesterday_walk) + ",";
+  response += "\"yesterday_run\": " + String(yesterday_run) + ",";
+  response += "\"yesterday_bike\": " + String(yesterday_bike) + ",";
+  response += "\"diff_walk\": " + String(diff_walk) + ",";
+  response += "\"diff_run\": " + String(diff_run) + ",";
+  response += "\"diff_bike\": " + String(diff_bike);
+  response += "}";
+
+  server.send(200, "application/json", response);
+}
+
 
 /* ----------------------------------------------------------------
  * handleNotFound:
@@ -423,7 +573,7 @@ void setup() {
       Serial.println("First element is STORED");
     } else if (strcmp(token, "DATE") == 0) {
       // First element is "DATE"
-      // store the second element in history_walk, the third in history_run and the fourth in history_bike
+      // store the second element in history_date, the third in history_walk, the fourth in history_run and the fifth in history_bike
         token = strtok(NULL, ";");
         history_date = token;
         token = strtok(NULL, ";");
@@ -432,10 +582,21 @@ void setup() {
         history_run = atoi(token);
         token = strtok(NULL, ";");
         history_bike = atoi(token);
+    } else if (strcmp(token, "YESTERDAY") == 0) {
+      // First element is "YESTERDAY"
+      // store the second element in yesterday_date, the third in yesterday_walk, the fourth in yesterday_run and the fifth in yesterday_bike
+        token = strtok(NULL, ";");
+        yesterday_date = token;
+        token = strtok(NULL, ";");
+        yesterday_walk = atoi(token);
+        token = strtok(NULL, ";");
+        yesterday_run = atoi(token);
+        token = strtok(NULL, ";");
+        yesterday_bike = atoi(token);
     }
   }
   free(temp);
- });
+  });
 
 
 
@@ -446,6 +607,10 @@ void setup() {
   server.on("/led", handleLED);
   server.on("/history", handleHistory);
   server.on("/response", handleResponse);
+  server.on("/yesterday", handleYesterday);
+  server.on("/getDifference", HTTP_GET, handleGetDifference);
+  server.on("/getCounters", HTTP_GET, handleGetCounters);
+  server.on("/updateCounter", HTTP_GET, handleUpdateCounter);
   server.on("/inline", [](){
     server.send(200, "text/plain", "This works without the need for authentication.");
   });
@@ -484,4 +649,10 @@ void loop() {
 
   // Handle MQTT client events
   client.loop();
+  delay(500);
+  walk = walk - 1;
+  run = run + 1;
+  bike = bike + 1;
+//   Serial.println(walk);
+//   Serial.println("here in loop");
 }
