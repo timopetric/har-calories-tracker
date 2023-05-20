@@ -110,7 +110,7 @@ def on_message(client, userdata, msg):
         # (1 = COUNT_WALK, 2 = COUNT_RUN, 3 = COUNT_BIKE)
         yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
         date_str = yesterday.strftime("%Y-%m-%d")
-        str_return = f"DATE;" + get_date_counters(date_str)
+        str_return = f"YESTERDAY;" + get_date_counters(date_str)
 
     else:
         # return error message
