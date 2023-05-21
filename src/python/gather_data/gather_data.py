@@ -9,7 +9,8 @@ topic = "AljazACCData"
 # 0 = walk
 # 1 = run
 # 2 = bike
-option = 20
+# 9 = no activity
+option = 9
 file_to_write = f"recording{option}.csv"
 
 # clear file
@@ -26,6 +27,9 @@ def on_message(client, userdata, msg):  # The callback for when a PUBLISH messag
     with open(file_to_write, 'a') as f:
         f.write(msg.payload.decode("utf-8") + '\n')
         # f.write(str(msg.payload) + '\n')
+    #
+    # if not "REC" in msg.payload.decode("utf-8"):
+    # client.publish(topic+"Rec", "server received-> " + msg.topic + " " + str(msg.payload))
 
 
 client = mqtt.Client("digi_mqtt_test")  # Create instance of client with client ID “digi_mqtt_test”
