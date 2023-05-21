@@ -2,34 +2,38 @@ import numpy as np
 import pandas as pd
 from glob import glob
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from everywhereml.sklearn.ensemble import RandomForestClassifier
 
-# This params currently achieve 99.76% accuracy on the MotionSense (jogging and walking) test dataset
+# This params currently achieve 99.30% accuracy on the MotionSense (jogging and walking) test dataset
 WINDOW_SIZE = 50   # 5 seconds
 N_ESTIMATORS = 40  # number of trees in the forest
 NUM_CLASSES = 6    # x, y, z accel + gyro
 RANDOM_SEED = 42   # for reproducibility
 
-labels = ["wlk", "bik", "non"]
+labels = ["wlk", "bik", "run", "non"]
+# Number of samples: 1472, per label:
+# 	Label 0 (wlk): 427 (29.01%)
+# 	Label 1 (bik): 470 (31.93%)
+# 	Label 2 (run): 263 (17.87%)
+# 	Label 3 (non): 312 (21.20%)
 
 # path_glob = "data/MotionSense/{label}*/*.csv"
-path_glob = "data/{label}*.csv"
+path_glob = "data/{label}_1.csv"
 
 X, y = np.array([]), []
-for label in labels:
-    datasets_paths_list = glob(path_glob.format(label=label))
+for label_inx, label_str in enumerate(labels):
+    datasets_paths_list = glob(path_glob.format(label=label_str))
 
     for datasets_path in datasets_paths_list:
         data = pd.read_csv(datasets_path, sep=";")
 
-        new_X = data.iloc[:, -6:].values  # x y z accelerometer columns
+        new_X = data.iloc[:, -6:].values  # x y z accelerometer and gyro columns
 
         # use sliding window to create new_X_50
         new_X = np.array([
             new_X[i:i + WINDOW_SIZE]
             for i
-            in range(0, len(new_X)-WINDOW_SIZE, WINDOW_SIZE//2)
+            in range(0, len(new_X)-WINDOW_SIZE, WINDOW_SIZE//4)
         ])
 
         # Flatten the windowed data
@@ -38,15 +42,17 @@ for label in labels:
         X = np.vstack((X, new_X)) if X.size else new_X
 
         # set y to be the same for all rows
-        y += [label for _ in range(len(new_X))]
+        y += [label_inx for _ in range(len(new_X))]
 
-y = LabelEncoder().fit_transform(y)
+y = np.array(y)
 
 # explore the data
 print(X, y)
 print(X.shape, y.shape)
 print(type(X), type(y))
 print(len(X), len(y))
+
+assert len(X) == len(y)
 
 # # balance the dataset by taking the minimum number of samples from each label
 # y_01_len = min([len(y[y == i]) for i in range(len(labels))])
