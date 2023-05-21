@@ -159,12 +159,13 @@ float delilnik = 131.0f;
 float acc_x_calib = 0.0;
 
 // Kalibracijske vrednosti 
-float gyroX_off = 0; 
-float gyroY_off = 0; 
-float gyroZ_off = 0; 
-float accX_off = 0;
-float accY_off = 0;
-float accZ_off = 0;
+float gyroX_off = -2.16; 
+float gyroY_off = -6.40; 
+float gyroZ_off = 42.28; 
+float accX_off = -279.41;
+float accY_off = -16276.09;
+float accZ_off = 3829.15;
+
 float gyro_x;
 float gyro_y;
 float gyro_z;
@@ -215,13 +216,13 @@ void calibrateSensors(){
          I2CReadRegister(MPU_ADD,ACC_MEAS_REG,6,accMeas);
          // ACC_XOUT = Acc_Sensitivity * X_acceleration
          tmp = (((int8_t)accMeas[0] << 8) + (uint8_t)accMeas[1]);
-         accX_off += tmp*delAccel;
+         accX_off += tmp;
          // ACC_YOUT = Acc_Sensitivity * Y_acceleration
          tmp = (((int8_t)accMeas[2] << 8) + (uint8_t)accMeas[3]);
-         accY_off += tmp*delAccel;
+         accY_off += tmp;
          // ACC_ZOUT = Acc_Sensitivity * Z_acceleration
          tmp = (((int8_t)accMeas[4] << 8) + (uint8_t)accMeas[5]);
-         accZ_off += tmp*delAccel;
+         accZ_off += tmp;
          
          Serial.print(".");
     }
@@ -235,18 +236,18 @@ void calibrateSensors(){
     accY_off /= CAL_NO;
     accZ_off /= CAL_NO;
     
-    Serial.print("Ziroskop X os");
+    Serial.print("Ziroskop X os ");
     Serial.println(gyroX_off);
-    Serial.print("Ziroskop Y os");
+    Serial.print("Ziroskop Y os ");
     Serial.println(gyroY_off);
-    Serial.print("Ziroskop Z os");
+    Serial.print("Ziroskop Z os ");
     Serial.println(gyroZ_off);
 
-    Serial.print("Pospeskometer X os");
+    Serial.print("Pospeskometer X os ");
     Serial.println(accX_off);
-    Serial.print("Pospeskometer Y os");
+    Serial.print("Pospeskometer Y os ");
     Serial.println(accY_off);
-    Serial.print("Pospeskometer Z os");
+    Serial.print("Pospeskometer Z os ");
     Serial.println(accZ_off);
 }
 
@@ -266,14 +267,13 @@ void readData() {
 
     float accelX_g, accelY_g, accelZ_g;
 
-    I2CReadRegister(MPU_ADD,ACC_MEAS_REG,6,accelMeas);
-    accelX = (((int16_t)accelMeas[0]) << 8) | accelMeas[1];
-    accelY = (((int16_t)accelMeas[2]) << 8) | accelMeas[3];
-    accelZ = (((int16_t)accelMeas[4]) << 8) | accelMeas[5];
-
-    accelX_g = accelX *delAccel;
-    accelY_g = accelY *delAccel;
-    accelZ_g = accelZ *delAccel;
+    I2CReadRegister(MPU_ADD, ACC_MEAS_REG,6,accMeas);
+    tmp = (((int8_t)accMeas[0] << 8) + (uint8_t)accMeas[1]);
+    accelX_g = (tmp - accX_off) * delAccel;
+    tmp = (((int8_t)accMeas[2] << 8) + (uint8_t)accMeas[3]);
+    accelY_g = (tmp - accY_off) * delAccel - 1.0;
+    tmp = (((int8_t)accMeas[4] << 8) + (uint8_t)accMeas[5]);
+    accelZ_g = (tmp - accZ_off) * delAccel;
 
     peakDetectionAccX.add(accelX_g);
     peakDetectionAccY.add(accelY_g);
@@ -290,7 +290,7 @@ void readData() {
         double filGyrX = peakDetectionGyrX.getFilt();
         double filGyrY = peakDetectionGyrY.getFilt();
         double filGyrZ = peakDetectionGyrZ.getFilt();
-        // Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+        Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
 
         // fill array window_prediction with data combining all 6 axis 5 times (30 samples)
         window_prediction[iter_win*6] = (float) filAccX;
@@ -836,7 +836,11 @@ void setup() {
     // nastavimo frekvenco vodila na 100 kHz
     Wire.setClock(100000);
 
-    calibrateSensors();
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // call only once per device and manually update the offsets accX_off, ...
+    // calibrateSensors();
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     tick.attach_ms(10, readData);  // 100 Hz
 
     // --------------------------------------------------
