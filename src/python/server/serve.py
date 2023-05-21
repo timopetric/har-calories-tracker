@@ -1,9 +1,14 @@
 import paho.mqtt.client as mqtt
 import datetime
-
+import os
 
 topic = "AljazACCData"
 FILE_TO_WRITE = f"store.csv"
+
+# create file if it does not exist
+if not os.path.exists(FILE_TO_WRITE):
+    with open(FILE_TO_WRITE, 'w') as f:
+        f.write('')
 
 WRITE_FMT = "{datestr};{wlk};{run};{bik};{calories}"
 
@@ -152,5 +157,5 @@ def on_message(client, userdata, msg):
 client = mqtt.Client("digi_mqtt_test")  # Create instance of client with client ID “digi_mqtt_test”
 client.on_connect = on_connect  # Define callback function for successful connection
 client.on_message = on_message  # Define callback function for receipt of a message
-client.connect('broker.hivemq.com', 1883, 60)
+client.connect('broker.mqtt-dashboard.com', 1883, 60)
 client.loop_forever()  # Start networking daemon
