@@ -10,12 +10,16 @@ topic = "AljazACCData"
 # 1 = run
 # 2 = bike
 # 9 = no activity
-option = 9
+option = 99
 file_to_write = f"recording{option}.csv"
+clear = False
 
 # clear file
-with open(file_to_write, 'w') as f:
-    f.write('')
+if clear:
+    with open(file_to_write, 'w') as f:
+        f.write('')
+#with open(file_to_write, 'w') as f:
+#    f.write('')
 
 def on_connect(client, userdata, flags, rc):  # The callback for when the client connects to the broker
     print("Connected with result code {0}".format(str(rc)))  # Print result of connection attempt
