@@ -30,7 +30,7 @@ def write_file(wlk, run, bik, file=FILE_TO_WRITE):
 
     if line_inx == -1:
         # create new line entry
-        line = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik)
+        line = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik, calories=0)
         db.append(line)
     else:
         # update existing line entry by adding counter values
@@ -39,7 +39,7 @@ def write_file(wlk, run, bik, file=FILE_TO_WRITE):
         wlk = str(int(line[1]) + wlk)
         run = str(int(line[2]) + run)
         bik = str(int(line[3]) + bik)
-        line = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik)
+        line = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik, calories=0)
         db[line_inx] = line
 
     # write to file
@@ -79,7 +79,6 @@ def get_date_counters(date_str):
     distance = stride * run
     time = distance / speed
     calories += time * met * 3.5 * weight / (200 * 60)
-    
 
     str_return = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik, calories=calories)
     return str_return
