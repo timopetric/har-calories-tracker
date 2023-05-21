@@ -5,7 +5,7 @@ import datetime
 topic = "AljazACCData"
 FILE_TO_WRITE = f"store.csv"
 
-WRITE_FMT = "{datestr};{wlk};{run};{bik}"
+WRITE_FMT = "{datestr};{wlk};{run};{bik};{calories}"
 
 
 def read_file(file=FILE_TO_WRITE):
@@ -61,7 +61,27 @@ def get_date_counters(date_str):
             line = line.split(";")
             wlk, run, bik = int(line[1]), int(line[2]), int(line[3])
 
-    str_return = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik)
+    # calculate calories burned
+    speed = 1.34 # average speed in m/s
+    met = 3.5 # metabolic equivalent of task for the speed
+    weight = 70 # weight in kg
+    height = 1.8 # height in m
+
+    stride = height * 0.414
+    distance = stride * wlk
+    time = distance / speed
+    calories = time * met * 3.5 * weight / (200 * 60) # calories burned while walking
+
+    # calories burned while running
+    stride = stride * 1.4
+    met = 7
+    speed = 4
+    distance = stride * run
+    time = distance / speed
+    calories += time * met * 3.5 * weight / (200 * 60)
+    
+
+    str_return = WRITE_FMT.format(datestr=date_str, wlk=wlk, run=run, bik=bik, calories=calories)
     return str_return
 
 
@@ -111,6 +131,16 @@ def on_message(client, userdata, msg):
         yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
         date_str = yesterday.strftime("%Y-%m-%d")
         str_return = f"YESTERDAY;" + get_date_counters(date_str)
+    
+    elif "TODAY" in msg:
+        # get today's date and return counters for that date.
+        # Message format example receive:
+        #   TODAY
+        # return:
+        #   2020-12-01;1;2;3
+        # (1 = COUNT_WALK, 2 = COUNT_RUN, 3 = COUNT_BIKE)
+        date_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        str_return = f"TODAY;" + get_date_counters(date_str)
 
     else:
         # return error message
