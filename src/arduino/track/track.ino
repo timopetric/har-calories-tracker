@@ -85,6 +85,7 @@ String mqttResponse; // Variable to store the MQTT response
 int count_walk = 0;
 int count_run = 0;
 int count_bike = 0;
+int count_non = 0;
 int history_walk = 0;
 int history_run = 0;
 int history_bike = 0;
@@ -290,7 +291,7 @@ void readData() {
         double filGyrX = peakDetectionGyrX.getFilt();
         double filGyrY = peakDetectionGyrY.getFilt();
         double filGyrZ = peakDetectionGyrZ.getFilt();
-        Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
+        // Serial.printf("accelX_g: %8.4lf, accelY_g: %8.4lf, accelZ_g: %8.4lf, gyro_x: %8.4lf, gyro_y: %8.4lf, gyro_z: %8.4lf\n", filAccX, filAccY, filAccZ, filGyrX, filGyrY, filGyrZ);
 
         // fill array window_prediction with data combining all 6 axis 5 times (30 samples)
         window_prediction[iter_win*6] = (float) filAccX;
@@ -308,9 +309,10 @@ void readData() {
             prediction = mlClassifier.predict(window_prediction);
 
             // array of thresholds for each class
-            const float THRESHOLDS[3] = {1.2, 999999.9, 1.8};
-            const int AWAY_FROM_PREVIOUS_PEAK[3] = {10, 8, 10};
-            int *COUNTERS[3] = {&count_bike, &count_run, &count_walk};      // TODO: run is currently "still"
+            // labels = ["wlk", "bik", "run", "non"]
+            const float THRESHOLDS[4] = {1.8, 1.2, 1.9, 999999.9};
+            const int AWAY_FROM_PREVIOUS_PEAK[4] = {8, 7, 5, 99};
+            int *COUNTERS[4] = {&count_walk, &count_bike, &count_run, &count_non};
 
             float threshold = THRESHOLDS[prediction];
             int away_from_previous_peak = AWAY_FROM_PREVIOUS_PEAK[prediction];
