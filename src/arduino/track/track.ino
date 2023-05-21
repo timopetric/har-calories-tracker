@@ -58,12 +58,12 @@ const char* mqttUser = "your_mqtt_username";
 const char* mqttPassword = "your_mqtt_password";
 
 // Replace with your Wi-Fi credentials
-const char* ssid = "fake TV";
-const char* password = "testtest1";
+const char* ssid = "Mi Phone";
+const char* password = "6a2ce2f58db9";
 
 // Replace with your username and password
 #define USERNAME "Mi Phone"
-#define PASSWORD "6a2ce2f58db9"
+#define PASSWORD "Mi Phone"
 
 // Global flag to indicate if MQTT callback has been executed
 bool mqttCallbackExecuted = false;
@@ -93,7 +93,16 @@ char *history_date;
 int yesterday_walk = 0;
 int yesterday_run = 0;
 int yesterday_bike = 0;
+int yesterday_calories = 0;
+int today_calories = 0;
+int today_walk = 0;
+int today_run = 0;
+int today_bike = 0;
+char *today_date;
+int history_calories = 0;
 char *yesterday_date;
+bool track_activity = false;
+String activity_label[4] = {"walking", "cycling", "running", "standing"};
 
 
 
@@ -160,12 +169,18 @@ float delilnik = 131.0f;
 float acc_x_calib = 0.0;
 
 // Kalibracijske vrednosti 
-float gyroX_off = -2.16; 
-float gyroY_off = -6.40; 
-float gyroZ_off = 42.28; 
-float accX_off = -279.41;
-float accY_off = -16276.09;
-float accZ_off = 3829.15;
+// float gyroX_off = -2.16; 
+// float gyroY_off = -6.40; 
+// float gyroZ_off = 42.28; 
+// float accX_off = -279.41;
+// float accY_off = -16276.09;
+// float accZ_off = 3829.15;
+float gyroX_off = 168.82;
+float gyroY_off = 1.05;
+float gyroZ_off = -104.65;
+float accX_off = 380.41;
+float accY_off = -16346.64;
+float accZ_off = 2945.62;
 
 float gyro_x;
 float gyro_y;
@@ -302,6 +317,9 @@ void readData() {
         window_prediction[iter_win*6+5] = (float) filGyrZ;
         iter_win += 1;
 
+        // // classify data
+        // prediction = mlClassifier.predict(window_prediction);
+
         if (iter_win == WINDOW_SIZE) {
             // 50 samples - 5 seconds - collected, time to classify
             
@@ -319,6 +337,7 @@ void readData() {
 
             // select counter for current class
             int *counter = COUNTERS[prediction];
+            Serial.println(prediction);
 
             for (int zamik = 0; zamik < WINDOW_SIZE; zamik++) {
                 iterSampleCount++;
@@ -329,7 +348,8 @@ void readData() {
 
                 // Serial.printf("iterSampleCount: %d, intensity: %f, threshold: %f, lastSampleIter: %d, away_from_previous_peak: %d\n", iterSampleCount, intensity, threshold, lastSampleIter, away_from_previous_peak);
 
-                if (intensity > threshold && iterSampleCount - lastSampleIter > away_from_previous_peak) {
+                if (intensity > threshold && iterSampleCount - lastSampleIter > away_from_previous_peak && track_activity == true) {
+                    // Serial.println("in here");
                     lastSampleIter = iterSampleCount;
                     (*counter)++;
                     
@@ -338,12 +358,12 @@ void readData() {
                 }
             }            
 
-            Serial.println("Classifier prediction: " + String(prediction));
-            Serial.print("\t");
+            // Serial.println("Classifier prediction: " + String(prediction));
+            // Serial.print("\t");
             for (int i = 0; i < WINDOW_SIZE; i++) {
-                Serial.printf("%7.4f", window_prediction[i]);
+                // Serial.printf("%7.4f", window_prediction[i]);
             }
-            Serial.println();
+            // Serial.println();
             
             iter_win = 0;
         }
@@ -422,7 +442,13 @@ void handleLogin(){
  */
 // Root page can be accessed only if authentication is OK
 String getCountersHTML() {
+    Serial.println(track_activity);
     String countersHTML = "";
+    countersHTML += "<div id='counters'>";
+    countersHTML += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+    countersHTML += "<h4>Acitivity</h4>";
+    countersHTML += "<p id='activity-label'>" + String(activity_label[prediction]) + "</p>";
+    countersHTML += "</div>";
     countersHTML += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
     countersHTML += "<h4>Walking</h4>";
     countersHTML += "<p id='walking-counter'>" + String(count_walk) + "</p>";
@@ -435,9 +461,23 @@ String getCountersHTML() {
     countersHTML += "<h4>Cycling</h4>";
     countersHTML += "<p id='cycling-counter'>" + String(count_bike) + "</p>";
     countersHTML += "</div>";
+    // countersHTML += "</div>";
+
+    if (track_activity) {
+        Serial.println("in if");
+        countersHTML += "<button onclick='endActivity(\"start\")'>End activity</button>";
+        countersHTML += "<button style=\"display: none;\" onclick='endActivity(\"end\")'>Start activity</button>";
+    } else {
+        Serial.println("in else");
+        countersHTML += "<button onclick='endActivity(\"end\")'>Start activity</button>";
+        countersHTML += "<button style=\"display: none;\" onclick='endActivity(\"start\")'>End activity</button>";
+    }
+    countersHTML += "</div>";
+    // track_activity = !track_activity;
 
     return countersHTML;
 }
+
 
 void handleRoot() {
     String header;
@@ -458,11 +498,6 @@ void handleRoot() {
     String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
     content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
 
-    // Add HTML code to turn on/off the built-in LED light
-    content += "<form action='/led' method='POST'>";
-    content += "<button name='led' value='" + String(!ledState) + "'>" + (ledState ? "Turn off" : "Turn on") + " LED</button>";
-    content += "</form>";
-
     // Add HTML code for history search window
     content += "<br><h3>Search History</h3>";
     content += "<form action='/history' method='POST'>";
@@ -473,10 +508,13 @@ void handleRoot() {
     // Add JavaScript code for the counters
     content += "<br><h3>Counters:</h3>";
     content += getCountersHTML();
-    content += "<button onclick='endActivity()'>End activity</button>";
+    // content += "<button id=\"start-button\" style=\"display: none;\" onclick='endActivity(\"start\")'>Start adsadadactivity</button>";
+    // content += "<button id=\"edadadand-button\" style=\"display: none;\" onclick='endActivity(\"end\")'>End activity</button>";
     content += "<button onclick='redirectToYesterday()'>Go to Yesterday</button>";
     content += "<script>";
-    content += "setInterval(updateCounters, 5000);";
+    // content += "if (" + String(track_activity == true) + ") {document.getElementById(\"start-button\").style.display = 'none';}";
+    // content += "else if (" + String(track_activity == false) + ") {document.getElementById(\"end-button\").style.display = 'none';}";
+    content += "setInterval(updateCounters, 2000);";
     content += "function updateCounters() {";
     content += "  var xhttp = new XMLHttpRequest();";
     content += "  xhttp.onreadystatechange = function() {";
@@ -485,12 +523,14 @@ void handleRoot() {
     content += "      document.getElementById('walking-counter').innerHTML = response.count_walk;";
     content += "      document.getElementById('jogging-counter').innerHTML = response.count_run;";
     content += "      document.getElementById('cycling-counter').innerHTML = response.count_bike;";
+    // content += "      console.log(response.activity_label);";
+    content += "      document.getElementById('activity-label').innerHTML = response.activity_label;";
     content += "    }";
     content += "  };";
     content += "  xhttp.open('GET', '/getCounters', true);";
     content += "  xhttp.send();";
     content += "}";
-    content += "function endActivity() {";
+    content += "function endActivity(fromWhere) {";
     content += "  var xhttp = new XMLHttpRequest();";
     content += "  xhttp.onreadystatechange = function() {";
     content += "    if (this.readyState == 4 && this.status == 200) {";
@@ -514,54 +554,44 @@ void handleGetCounters() {
     String response = "{";
     response += "\"count_walk\": " + String(count_walk) + ",";
     response += "\"count_run\": " + String(count_run) + ",";
-    response += "\"count_bike\": " + String(count_bike);
+    response += "\"count_bike\": " + String(count_bike) + ",";
+    response += "\"activity_label\": \"" + String(activity_label[prediction]) + "\"";
     response += "}";
 
     server.send(200, "application/json", response);
+    // Serial.println("IN GET COUNTERS the response is: " + response);
 }
+
+
 
 // Handle the '/updateCounter' endpoint
 void handleUpdateCounter() {
-    if (client.connected()) {
+    if (track_activity == true) {
+        if (client.connected()) {
         String send = "STORE;" + String(count_walk) + ";" + String(count_run) + ";" + String(count_bike);
         client.publish("AljazACCData", send.c_str());
         count_walk = 0; count_run = 0; count_bike = 0;
-    }
+        // track_activity = false;
+        }
 
-    count_walk = 0;
-    count_run = 0;
-    count_bike = 0;
-
-    while (!mqttCallbackExecuted) {
-        client.loop();
-        delay(10);
+        count_walk = 0;
+        count_run = 0;
+        count_bike = 0;
+     
+        while (!mqttCallbackExecuted) {
+            client.loop();
+            delay(10);
+        }
     }
+    
+    Serial.println("changing track_activity" + String(track_activity));
+    track_activity = !track_activity;
+    Serial.println("track_activity: " + String(track_activity));
     String countersHTML = getCountersHTML();
 
     server.send(200, "text/html", countersHTML);
 }
 
-
-/* ----------------------------------------------------------------
- * handleLED:
- */
-void handleLED(){
-    if (!is_authentified()){
-        server.sendHeader("Location","/login");
-        server.sendHeader("Cache-Control","no-cache");
-        server.send(301);
-        return;
-    }
-    
-    if (server.hasArg("led")) {
-        ledState = server.arg("led") == "1";
-        digitalWrite(PIN_LED, ledState ? HIGH : LOW);
-    }
-    
-    server.sendHeader("Location","/");
-    server.sendHeader("Cache-Control","no-cache");
-    server.send(301);
-}
 
 /* ----------------------------------------------------------------
  * handleHistory:
@@ -594,10 +624,10 @@ void handleHistory(){
 /* ----------------------------------------------------------------
  * handleResponse:
  */
-void handleResponse(){
-    if (!is_authentified()){
-        server.sendHeader("Location","/login");
-        server.sendHeader("Cache-Control","no-cache");
+void handleResponse() {
+    if (!is_authentified()) {
+        server.sendHeader("Location", "/login");
+        server.sendHeader("Cache-Control", "no-cache");
         server.send(301);
         return;
     }
@@ -608,59 +638,54 @@ void handleResponse(){
         delay(10);
     }
 
-        Serial.println("fdsfasf");
-        Serial.println(history_walk);
-        Serial.println(history_run);
-        Serial.println(history_bike);
+    Serial.println("fdsfasf");
+    Serial.println(history_walk);
+    Serial.println(history_run);
+    Serial.println(history_bike);
 
-    
-        //   String content = "<html><body>";
-        
-        //   // Add MQTT response here
-        //   content += "<h2>MQTT Response:</h2>";
-        //   content += "<p>" + mqttResponse + "</p>";
-        
-        //   content += "</body></html>";
-        //   server.send(200, "text/html", content);
-        String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
-        content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
+    String content = "<html><body><h2>Statistics for " + String(history_date) + ".</h2><br>";
+    content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
 
-        // Add JavaScript code for the counters
-        content += "<br><h3>Counters:</h3>";
-        content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
-        content += "<h4>Walking</h4>";
-        content += "<p id='walking-counter'>" + String(history_walk) + "</p>";
-        content += "</div>";
-        content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
-        content += "<h4>Jogging</h4>";
-        content += "<p id='jogging-counter'>" + String(history_run) + "</p>";
-        content += "</div>";
-        content += "<div class='counter-column' style='display: inline-block;'>";
-        content += "<h4>Cycling</h4>";
-        content += "<p id='cycling-counter'>" + String(history_bike) + "</p>";
-        content += "</div>";
-        content += "<script>";
-        content += "setInterval(updateCounters, 5000);";
-        content += "function updateCounters() {";
-        content += "  var walkingCounterElement = document.getElementById('walking-counter');";
-        content += "  var joggingCounterElement = document.getElementById('jogging-counter');";
-        content += "  var cyclingCounterElement = document.getElementById('cycling-counter');";
-        content += "  walkingCounterElement.innerHTML = " + String(history_walk) + ";";
-        content += "  joggingCounterElement.innerHTML = " + String(history_run) + ";";
-        content += "  cyclingCounterElement.innerHTML = " + String(history_bike) + ";";
-        content += "}";
-        content += "function refreshPage() {";
-        content += "  location.reload();";
-        content += "}";
-        content += "</script>";
+    // Add JavaScript code for the counters
+    content += "<br><h3>Counters:</h3>";
+    content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+    content += "<h4>Walking</h4>";
+    content += "<p id='walking-counter'>" + String(history_walk) + "</p>";
+    content += "</div>";
+    content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+    content += "<h4>Jogging</h4>";
+    content += "<p id='jogging-counter'>" + String(history_run) + "</p>";
+    content += "</div>";
+    content += "<div class='counter-column' style='display: inline-block; margin-right: 20px;'>";
+    content += "<h4>Cycling</h4>";
+    content += "<p id='cycling-counter'>" + String(history_bike) + "</p>";
+    content += "</div>";
+    content += "<div class='counter-column' style='display: inline-block;'>";
+    content += "<h4>Calories</h4>";
+    content += "<p id='calories-counter'>Total Calories Burned: " + String(history_calories) + "</p>";
+    content += "</div>";
+    content += "<script>";
+    content += "setInterval(updateCounters, 5000);";
+    content += "function updateCounters() {";
+    content += "  var walkingCounterElement = document.getElementById('walking-counter');";
+    content += "  var joggingCounterElement = document.getElementById('jogging-counter');";
+    content += "  var cyclingCounterElement = document.getElementById('cycling-counter');";
+    content += "  walkingCounterElement.innerHTML = " + String(history_walk) + ";";
+    content += "  joggingCounterElement.innerHTML = " + String(history_run) + ";";
+    content += "  cyclingCounterElement.innerHTML = " + String(history_bike) + ";";
+    content += "}";
+    content += "function refreshPage() {";
+    content += "  location.reload();";
+    content += "}";
+    content += "</script>";
 
-
-        content += "</body></html>";
-        server.send(200, "text/html", content);
+    content += "</body></html>";
+    server.send(200, "text/html; charset=utf-8", content);
 
     // Reset the flag after serving the content
     mqttCallbackExecuted = false;
 }
+
 int walk;
 int run;
 int bike;
@@ -684,13 +709,29 @@ void handleYesterday() {
         client.loop();
         delay(10);
     }
+
+    mqttCallbackExecuted = false;
+    
+    if (client.connected()) {
+        String send = "TODAY;";
+        client.publish("AljazACCData", send.c_str());
+    }
+
+    while (!mqttCallbackExecuted) {
+        Serial.println("in in yesterday today");
+        client.loop();
+        delay(10);
+    }
     mqttCallbackExecuted = false;
 
-    int diff_walk = yesterday_walk - walk;
-    int diff_run = yesterday_run - run;
-    int diff_bike = yesterday_bike - bike;
+    int diff_walk = yesterday_walk - (count_walk + today_walk);
+    int diff_run = yesterday_run - (count_run + today_run);
+    int diff_bike = yesterday_bike - (count_bike + today_bike);
+    Serial.println(today_walk);
+    Serial.println(today_run);
+    Serial.println(today_bike);
 
-    String content = "<html><body><h2>Hello! You have successfully connected to ESP8266!</h2><br>";
+    String content = "<html><body><h2>Statistics for yesterday.</h2><br>";
     content += "You can access this page until you <a href=\"/login?DISCONNECT=YES\">disconnect</a><br><hr />";
     content += "<style>";
     content += ".counter-column {";
@@ -724,6 +765,10 @@ void handleYesterday() {
     content += "<p id='cycling-counter'>" + String(yesterday_bike) + "</p>";
     content += "<p id='cycling-difference'>Strokes needed to reach yesterday: " + String(diff_bike) + "</p>"; // Add difference column
     content += "</div>";
+    content += "<div class='counter-column'>";
+    content += "<h4>Calories</h4>";
+    content += "<p id='calories-total'>Total Calories Burned: " + String(yesterday_calories) + "</p>"; // Add calories column
+    content += "</div>";
     content += "<script>";
     content += "setInterval(updateCounters, 2000);"; // Update every 2 seconds
     content += "function updateCounters() {";
@@ -737,6 +782,7 @@ void handleYesterday() {
     content += "      document.getElementById('walking-difference').innerHTML = 'Steps needed to reach yesterday: ' + response.diff_walk;";
     content += "      document.getElementById('jogging-difference').innerHTML = 'Running steps needed to reach yesterday: ' + response.diff_run;";
     content += "      document.getElementById('cycling-difference').innerHTML = 'Strokes needed to reach yesterday: ' + response.diff_bike;";
+    // content += "      document.getElementById('calories-total').innerHTML = 'Total Calories Burned: ' + response.total_calories;";
     content += "    }";
     content += "  };";
     content += "  xhttp.open('GET', '/getDifference', true);";
@@ -749,12 +795,13 @@ void handleYesterday() {
     // Reset the flag after serving the content
     mqttCallbackExecuted = false;
 }
+
  
 // Handle the '/getDifference' endpoint
 void handleGetDifference() {
-    int diff_walk = yesterday_walk - walk;
-    int diff_run = yesterday_run - run;
-    int diff_bike = yesterday_bike - bike;
+    int diff_walk = yesterday_walk - count_walk;
+    int diff_run = yesterday_run - count_run;
+    int diff_bike = yesterday_bike - count_bike;
 
     String response = "{";
     response += "\"yesterday_walk\": " + String(yesterday_walk) + ",";
@@ -875,12 +922,15 @@ void setup() {
             // store the second element in history_date, the third in history_walk, the fourth in history_run and the fifth in history_bike
                 token = strtok(NULL, ";");
                 history_date = token;
+                Serial.println("history date" + String(history_date));
                 token = strtok(NULL, ";");
                 history_walk = atoi(token);
                 token = strtok(NULL, ";");
                 history_run = atoi(token);
                 token = strtok(NULL, ";");
                 history_bike = atoi(token);
+                token = strtok(NULL, ";");
+                history_calories = atoi(token);
         } else if (strcmp(token, "YESTERDAY") == 0) {
             // First element is "YESTERDAY"
             // store the second element in yesterday_date, the third in yesterday_walk, the fourth in yesterday_run and the fifth in yesterday_bike
@@ -892,6 +942,20 @@ void setup() {
                 yesterday_run = atoi(token);
                 token = strtok(NULL, ";");
                 yesterday_bike = atoi(token);
+                token = strtok(NULL, ";");
+                yesterday_calories = atoi(token);
+                Serial.println("yesterday_calories: " + String(yesterday_calories));
+        } else if (strcmp(token, "TODAY") == 0) {
+            token = strtok(NULL, ";");
+            today_date = token;
+            token = strtok(NULL, ";");
+            today_walk = atoi(token);
+            token = strtok(NULL, ";");
+            today_run = atoi(token);
+            token = strtok(NULL, ";");
+            today_bike = atoi(token);
+            token = strtok(NULL, ";");
+            today_calories = atoi(token);
         }
     }
     free(temp);
@@ -903,7 +967,6 @@ void setup() {
     // Server settings
     server.on("/", handleRoot);
     server.on("/login", handleLogin);
-    server.on("/led", handleLED);
     server.on("/history", handleHistory);
     server.on("/response", handleResponse);
     server.on("/yesterday", handleYesterday);
