@@ -64,7 +64,7 @@ def get_date_counters(date_str):
     # calculate calories burned
     speed = 1.34 # average speed in m/s
     met = 3.5 # metabolic equivalent of task for the speed
-    weight = 70 # weight in kg
+    weight = 75 # weight in kg
     height = 1.8 # height in m
 
     stride = height * 0.414
