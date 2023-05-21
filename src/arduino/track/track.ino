@@ -52,7 +52,7 @@
 #include "MlClassifier.h"
 
 // Replace with your MQTT broker details
-const char* mqttServer = "broker.hivemq.com";
+const char* mqttServer = "broker.mqtt-dashboard.com";
 const int mqttPort = 1883;
 const char* mqttUser = "your_mqtt_username";
 const char* mqttPassword = "your_mqtt_password";

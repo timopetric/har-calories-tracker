@@ -35,6 +35,6 @@ def on_message(client, userdata, msg):  # The callback for when a PUBLISH messag
 client = mqtt.Client("digi_mqtt_test")  # Create instance of client with client ID “digi_mqtt_test”
 client.on_connect = on_connect  # Define callback function for successful connection
 client.on_message = on_message  # Define callback function for receipt of a message
-client.connect('broker.hivemq.com', 1883, 60)
+client.connect('broker.mqtt-dashboard.com', 1883, 60)
 #client.connect('127.0.0.1', 17300)
 client.loop_forever()  # Start networking daemon
