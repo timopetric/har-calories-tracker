@@ -351,6 +351,11 @@ void readData() {
                 if (intensity > threshold && iterSampleCount - lastSampleIter > away_from_previous_peak && track_activity == true) {
                     // Serial.println("in here");
                     lastSampleIter = iterSampleCount;
+                    // if prediction is walking or runnign we need to double the add two and not just one, since it detects only one leg
+                    if (prediction == 0 || prediction == 2) {
+                        (*counter) += 2;
+                    }
+                    else
                     (*counter)++;
                     
                     Serial.printf("prediction: %d, counters: bike %d, run %d, walk %d\n", prediction, count_bike, count_run, count_walk);
